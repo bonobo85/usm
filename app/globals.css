@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --fond: #0B1221;
+  --fond-clair: #101A2E;
+  --fond-carte: #16233D;
+  --bleu: #1B3E7C;
+  --or: #A67C4E;
+  --rouge: #B32134;
+  --bordure: #1E2D4A;
+  --texte: #E8ECF2;
+  --texte-muted: #8494AD;
+}
+
+html, body { background: var(--fond); color: var(--texte); }
+body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+@layer components {
+  .carte {
+    @apply bg-[var(--fond-carte)] border border-[var(--bordure)] rounded-lg p-4;
+  }
+  .input {
+    @apply w-full bg-[var(--fond-clair)] border border-[var(--bordure)] rounded-md px-3 py-2 text-sm text-[var(--texte)] outline-none focus:border-[var(--or)] transition;
+  }
+  .label {
+    @apply block text-xs uppercase tracking-wider text-[var(--texte-muted)] mb-1;
+  }
+  .titre-page {
+    @apply text-2xl font-semibold tracking-tight text-[var(--texte)];
+  }
+  .titre-section {
+    @apply text-sm uppercase tracking-widest text-[var(--or)] font-semibold mb-3;
+  }
+  .bouton-bleu {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--bleu)] hover:bg-[#244c93] text-white text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .bouton-or {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--or)] hover:bg-[#b88955] text-white text-sm font-medium transition disabled:opacity-50;
+  }
+  .bouton-rouge {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--rouge)] hover:bg-[#c42a3e] text-white text-sm font-medium transition disabled:opacity-50;
+  }
+  .bouton-vert {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#2D8B4E] hover:bg-[#359659] text-white text-sm font-medium transition disabled:opacity-50;
+  }
+  .bouton-gris {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--fond-clair)] hover:bg-[#16233D] border border-[var(--bordure)] text-[var(--texte)] text-sm font-medium transition;
+  }
+}
+
+/* Scrollbar discret */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--fond); }
+::-webkit-scrollbar-thumb { background: var(--bordure); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: var(--bleu); }
