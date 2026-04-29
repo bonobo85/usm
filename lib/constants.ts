@@ -14,16 +14,17 @@ export const ORDRE_BADGES = [
   "CRASH","FORMATEUR","INSTRUCTEUR","NEGOCIATEUR","BMO","DRONE","GAV","BRACELET","FEDERAL"
 ] as const;
 
+// Colors from the Supabase table screenshot (PJ)
 export const BADGES_META: Record<string, { nom: string; couleur: string; description: string }> = {
-  CRASH:       { nom: "CRASH",       couleur: "#B32134", description: "Unité CRASH" },
-  FORMATEUR:   { nom: "Formateur",   couleur: "#2E5AA8", description: "Formateur certifié" },
-  INSTRUCTEUR: { nom: "Instructeur", couleur: "#1B3E7C", description: "Instructeur" },
-  NEGOCIATEUR: { nom: "Négociateur", couleur: "#A67C4E", description: "Négociateur" },
-  BMO:         { nom: "BMO",         couleur: "#8B6A42", description: "Brigade Motorisée" },
-  DRONE:       { nom: "Drone",       couleur: "#4A5670", description: "Opérateur Drone" },
-  GAV:         { nom: "GAV",         couleur: "#6B7B9C", description: "Garde à Vue" },
   BRACELET:    { nom: "Bracelet",    couleur: "#D43A4F", description: "Bracelet électronique" },
   FEDERAL:     { nom: "Fédéral",     couleur: "#C9994F", description: "Mandat fédéral" },
+  FORMATEUR:   { nom: "Formateur",   couleur: "#2E5AA8", description: "Formateur certifié" },
+  NEGOCIATEUR: { nom: "Négociateur", couleur: "#A67C4E", description: "Négociateur" },
+  DRONE:       { nom: "Drone",       couleur: "#4A5670", description: "Opérateur Drone" },
+  BMO:         { nom: "BMO",         couleur: "#8B6A42", description: "Brigade Motorisée" },
+  INSTRUCTEUR: { nom: "Instructeur", couleur: "#1B3E7C", description: "Instructeur" },
+  CRASH:       { nom: "CRASH",       couleur: "#B32134", description: "Unité CRASH" },
+  GAV:         { nom: "GAV",         couleur: "#6B7B9C", description: "Garde à Vue" },
 };
 
 export const trierBadges = (codes: string[]) =>

@@ -7,13 +7,17 @@ import { useUser } from "@/lib/useUser";
 import { Avatar } from "@/components/Avatar";
 import { RankBadge, StatusDot } from "@/components/RankBadge";
 import { BadgesRow } from "@/components/BadgeTag";
-import { Edit3, Save, X, Server, ShieldCheck } from "lucide-react";
+import { getRang } from "@/lib/constants";
+import { Edit3, Save, X, Server, ShieldCheck, AlertTriangle } from "lucide-react";
 
 export default function ProfilPage() {
   const supa = useSupabase();
-  const { user: me } = useUser();
-  const { userId } = useParams<{ userId: string }>();
+  const { user: me, rang: myRang } = useUser();
+  const params = useParams<{ userId: string }>();
+  const userId = params?.userId;
   const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState<any>({});
   const [hist, setHist] = useState<any[]>([]);
@@ -23,35 +27,59 @@ export default function ProfilPage() {
 
   useEffect(() => {
     if (!userId) return;
+    setLoading(true);
+    setError(null);
     (async () => {
-      const { data } = await supa
-        .from("users")
-        .select("*, user_badges(is_active, attribue_le, raison, badges(code, nom))")
-        .eq("id", userId)
-        .single();
-      setProfile(data);
-      setForm({
-        surnom: data?.surnom ?? "",
-        date_naissance: data?.date_naissance ?? "",
-        lieu_naissance: data?.lieu_naissance ?? "",
-        telephone: data?.telephone ?? ""
-      });
+      try {
+        const { data, error: err } = await supa
+          .from("users")
+          .select("*, user_badges(is_active, attribue_le, raison, badges(code, nom))")
+          .eq("id", userId)
+          .single();
 
-      const { data: rh } = await supa
-        .from("rank_history")
-        .select("*")
-        .eq("user_id", userId)
-        .order("modifie_le", { ascending: false });
-      setHist(rh ?? []);
+        if (err || !data) {
+          setError("Profil introuvable.");
+          setLoading(false);
+          return;
+        }
 
-      setBHist(data?.user_badges ?? []);
+        setProfile(data);
+        setForm({
+          surnom: data.surnom ?? "",
+          date_naissance: data.date_naissance ?? "",
+          lieu_naissance: data.lieu_naissance ?? "",
+          telephone: data.telephone ?? ""
+        });
+
+        const { data: rh } = await supa
+          .from("rank_history")
+          .select("*")
+          .eq("user_id", userId)
+          .order("modifie_le", { ascending: false });
+        setHist(rh ?? []);
+
+        setBHist(data.user_badges ?? []);
+      } catch {
+        setError("Erreur de chargement du profil.");
+      }
+      setLoading(false);
     })();
   }, [userId, supa]);
 
-  if (!profile) return <LayoutApp><p className="text-[var(--texte-muted)]">Chargement…</p></LayoutApp>;
+  if (loading) return <LayoutApp><p className="text-[var(--texte-muted)] text-center mt-12">Chargement du profil…</p></LayoutApp>;
+  if (error) return (
+    <LayoutApp>
+      <div className="carte text-center max-w-md mx-auto mt-12">
+        <AlertTriangle className="w-10 h-10 mx-auto text-[var(--or)] mb-3" />
+        <p className="text-sm text-[var(--texte-muted)]">{error}</p>
+      </div>
+    </LayoutApp>
+  );
+  if (!profile) return <LayoutApp><p className="text-[var(--texte-muted)]">Profil introuvable.</p></LayoutApp>;
 
-  const codes = (profile.user_badges ?? []).filter((b: any) => b.is_active).map((b: any) => b.badges.code);
+  const codes = (profile.user_badges ?? []).filter((b: any) => b.is_active).map((b: any) => b.badges?.code).filter(Boolean);
   const guilds = (isMe ? me?.discord_guilds : []) ?? [];
+  const rank = getRang(profile.rank_level);
 
   const save = async () => {
     await supa.from("users").update(form).eq("id", userId);
@@ -62,14 +90,23 @@ export default function ProfilPage() {
   return (
     <LayoutApp>
       <div className="carte mb-4 flex flex-wrap items-center gap-4">
-        <Avatar src={profile.avatar_url} name={profile.surnom ?? profile.username} size={84} />
+        <div className="relative">
+          <Avatar src={profile.avatar_url} name={profile.surnom ?? profile.username} size={84} />
+          <span className="absolute bottom-1 right-1">
+            <StatusDot statut={profile.statut} />
+          </span>
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <StatusDot statut={profile.statut} />
             <h1 className="titre-page">{profile.surnom ?? profile.username}</h1>
           </div>
-          <RankBadge level={profile.rank_level} size="md" />
-          <div className="mt-2"><BadgesRow codes={codes} size="sm" /></div>
+          <div className="flex items-center gap-2 mb-2">
+            <RankBadge level={profile.rank_level} size="md" />
+            <span className="text-xs text-[var(--texte-muted)]">
+              {profile.statut === "disponible" ? "Disponible" : profile.statut === "occupe" ? "Occupé" : profile.statut === "absent" ? "Absent" : "Hors ligne"}
+            </span>
+          </div>
+          <BadgesRow codes={codes} size="sm" />
         </div>
         {isMe && !edit && (
           <button onClick={() => setEdit(true)} className="bouton-gris">
@@ -100,6 +137,7 @@ export default function ProfilPage() {
               <Row k="Lieu de naissance" v={profile.lieu_naissance ?? "—"} />
               <Row k="Téléphone" v={profile.telephone ?? "—"} />
               <Row k="Discord ID" v={profile.discord_id} />
+              <Row k="Dernière connexion" v={profile.derniere_connexion ? new Date(profile.derniere_connexion).toLocaleString("fr-FR") : "—"} />
             </dl>
           )}
         </div>
@@ -111,7 +149,9 @@ export default function ProfilPage() {
             {hist.map(h => (
               <li key={h.id} className="border-l-2 border-[var(--bleu)] pl-3">
                 <div className="flex justify-between">
-                  <span>{h.ancien_rang ?? "—"} → {h.nouveau_rang}</span>
+                  <span>
+                    {h.ancien_rang != null ? getRang(h.ancien_rang).nom : "—"} → {getRang(h.nouveau_rang).nom}
+                  </span>
                   <span className="text-xs text-[var(--texte-muted)]">{new Date(h.modifie_le).toLocaleDateString("fr-FR")}</span>
                 </div>
                 <p className="text-xs text-[var(--texte-muted)]">{h.raison}</p>
@@ -126,13 +166,32 @@ export default function ProfilPage() {
           <ul className="space-y-2 text-sm">
             {bHist.map((b: any, i: number) => (
               <li key={i} className="flex items-center justify-between">
-                <span className="font-medium">{b.badges?.nom}</span>
+                <span className="font-medium">{b.badges?.nom ?? "Badge"}</span>
                 <span className="text-xs text-[var(--texte-muted)]">
                   {new Date(b.attribue_le).toLocaleDateString("fr-FR")} {!b.is_active && "(révoqué)"}
                 </span>
               </li>
             ))}
           </ul>
+        </div>
+
+        {/* Documents section */}
+        <div className="carte lg:col-span-3">
+          <h2 className="titre-section">Documents</h2>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <div className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
+              <span className="text-sm">📷 Photo de profil</span>
+              {isMe && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
+            </div>
+            <div className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
+              <span className="text-sm">🪪 Carte d&apos;identité</span>
+              {(isMe || myRang >= 7) && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
+            </div>
+            <div className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
+              <span className="text-sm">🚗 Permis</span>
+              {(isMe || myRang >= 7) && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
+            </div>
+          </div>
         </div>
 
         {isMe && guilds.length > 0 && (
@@ -148,7 +207,7 @@ export default function ProfilPage() {
                     {g.icon ? (
                       <img src={`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`} alt={g.name} className="w-8 h-8 rounded-full" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-[var(--bleu)] flex items-center justify-center text-xs">{g.name.charAt(0)}</div>
+                      <div className="w-8 h-8 rounded-full bg-[var(--bleu)] flex items-center justify-center text-xs">{g.name?.charAt(0)}</div>
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-semibold truncate">{g.name}</p>

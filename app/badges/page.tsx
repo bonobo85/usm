@@ -8,10 +8,12 @@ import { Avatar } from "@/components/Avatar";
 import { RankBadge } from "@/components/RankBadge";
 import { BadgesRow } from "@/components/BadgeTag";
 import { Modal } from "@/components/Modal";
-import { ORDRE_BADGES, BADGES_META, getRang } from "@/lib/constants";
-import { Plus, Search } from "lucide-react";
+import { ORDRE_BADGES, BADGES_META, getRang, estColeadMin } from "@/lib/constants";
+import { Plus, Search, Trash2 } from "lucide-react";
 
 export default function BadgesPage() {
+  const { rang } = useUser();
+  // Visible from Op-Second (5), but add/remove only for co-lead+ (7)
   return (
     <PermissionGate rangMin={5}>
       <LayoutApp>
@@ -23,13 +25,16 @@ export default function BadgesPage() {
 
 function Inner() {
   const supa = useSupabase();
-  const { user: me } = useUser();
+  const { user: me, rang } = useUser();
   const [members, setMembers] = useState<any[]>([]);
   const [allBadges, setAllBadges] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const [badgeFilter, setBadgeFilter] = useState("");
   const [target, setTarget] = useState<any>(null);
   const [revoking, setRevoking] = useState<{ user: any; code: string } | null>(null);
   const [reason, setReason] = useState("");
+
+  const canManage = estColeadMin(rang); // co-leader+ for add/remove
 
   const load = async () => {
     const { data } = await supa.from("users").select("id, username, surnom, avatar_url, rank_level, user_badges(id, is_active, badges(id, code))").eq("is_active", true);
@@ -53,6 +58,13 @@ function Inner() {
     setRevoking(null); setReason(""); load();
   };
 
+  // Badge summary counts
+  const badgeCounts = ORDRE_BADGES.map(code => ({
+    code,
+    meta: BADGES_META[code],
+    count: members.filter(m => m.user_badges?.some((b: any) => b.is_active && b.badges?.code === code)).length
+  }));
+
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -63,13 +75,29 @@ function Inner() {
         </div>
       </div>
 
+      {/* Badge list overview */}
+      <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 mb-6">
+        {badgeCounts.map(({ code, meta, count }) => (
+          <button
+            key={code}
+            onClick={() => setBadgeFilter(badgeFilter === code ? "" : code)}
+            className={`carte text-center py-3 cursor-pointer hover:border-[var(--or)] transition ${badgeFilter === code ? 'border-[var(--or)]' : ''}`}
+          >
+            <div className="text-xs font-bold" style={{ color: meta.couleur }}>{meta.nom}</div>
+            <div className="text-lg font-semibold mt-1">{count}</div>
+            <div className="text-[10px] text-[var(--texte-muted)]">{meta.description}</div>
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-2">
         {members
           .filter(m => (m.surnom ?? m.username).toLowerCase().includes(search.toLowerCase()))
+          .filter(m => !badgeFilter || m.user_badges?.some((b: any) => b.is_active && b.badges?.code === badgeFilter))
           .sort((a, b) => b.rank_level - a.rank_level)
           .map(m => {
             const r = getRang(m.rank_level);
-            const codes = m.user_badges.filter((b: any) => b.is_active).map((b: any) => b.badges.code);
+            const codes = m.user_badges?.filter((b: any) => b.is_active).map((b: any) => b.badges?.code).filter(Boolean) ?? [];
             const missing = ORDRE_BADGES.filter(c => !codes.includes(c));
             return (
               <div key={m.id} className="carte flex flex-wrap items-center gap-3" style={{ borderLeft: `3px solid ${r.couleur}` }}>
@@ -79,8 +107,8 @@ function Inner() {
                   <RankBadge level={m.rank_level} size="xs" />
                 </div>
                 <div className="ml-auto flex items-center gap-2 flex-wrap">
-                  <BadgesRow codes={codes} size="xs" onRevoke={(code) => setRevoking({ user: m, code })} />
-                  {missing.length > 0 && (
+                  <BadgesRow codes={codes} size="xs" onRevoke={canManage ? (code) => setRevoking({ user: m, code }) : undefined} />
+                  {canManage && missing.length > 0 && (
                     <button onClick={() => setTarget({ ...m, _missing: missing })} className="text-xs px-2 py-1 rounded border border-dashed border-[var(--or)] text-[var(--or)] hover:bg-[var(--or)] hover:text-white transition flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Ajouter
                     </button>
@@ -96,6 +124,7 @@ function Inner() {
           {target?._missing?.map((c: string) => {
             const meta = BADGES_META[c];
             const b = allBadges.find(x => x.code === c);
+            if (!b) return null;
             return (
               <button key={c} onClick={() => grant(b.id)} className="carte text-left hover:border-[var(--or)] transition">
                 <p className="font-semibold text-sm" style={{ color: meta.couleur }}>{meta.nom}</p>

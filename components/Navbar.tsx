@@ -4,8 +4,8 @@ import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useState } from "react";
 import {
-  Shield, Home, Users, Calendar, GraduationCap, Award, Siren,
-  ChevronDown, FileText, MessageSquare, Folder, Archive, Settings, Bell, LogOut, Menu, X
+  Home, Users, Calendar, GraduationCap, Award, Siren,
+  ChevronDown, FileText, MessageSquare, Archive, Settings, Bell, LogOut, Menu, X
 } from "lucide-react";
 import { useUser } from "@/lib/useUser";
 import { Avatar } from "./Avatar";
@@ -56,7 +56,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-40 bg-[var(--fond-clair)] border-b border-[var(--bordure)]">
       <div className="max-w-[1600px] mx-auto px-4 h-14 flex items-center gap-3">
         <Link href="/dashboard" className="flex items-center gap-2 text-[var(--or)] font-bold">
-          <Shield className="w-5 h-5" />
+          <img src="/usm-logo.png" alt="USM" className="w-8 h-8 rounded-full object-cover" />
           <span className="hidden sm:inline tracking-widest text-sm">USM</span>
         </Link>
 
@@ -143,7 +143,7 @@ export default function Navbar() {
         <div className="lg:hidden fixed inset-0 z-50 bg-[var(--fond)] p-4">
           <div className="flex justify-between mb-4">
             <span className="text-[var(--or)] font-bold tracking-widest flex items-center gap-2">
-              <Shield className="w-5 h-5" /> USM
+              <img src="/usm-logo.png" alt="USM" className="w-7 h-7 rounded-full object-cover" /> USM
             </span>
             <button onClick={() => setOpenMobile(false)}>
               <X className="w-6 h-6" />

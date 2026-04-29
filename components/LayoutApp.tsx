@@ -1,16 +1,28 @@
 "use client";
 import Navbar from "./Navbar";
 import { useUser } from "@/lib/useUser";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 export default function LayoutApp({ children }: { children: React.ReactNode }) {
-  const { estConnecte, estEnChargement } = useUser();
+  const { estConnecte, estEnChargement, rang } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!estEnChargement && !estConnecte) router.push("/login");
   }, [estConnecte, estEnChargement, router]);
+
+  // BCSO (rank 1) redirect to waiting page, except for profile, dashboard, and bcso page itself
+  useEffect(() => {
+    if (!estEnChargement && estConnecte && rang === 1) {
+      const allowed = ["/dashboard", "/profil", "/bcso"];
+      const isAllowed = allowed.some(p => pathname?.startsWith(p));
+      if (!isAllowed) {
+        router.push("/bcso");
+      }
+    }
+  }, [estEnChargement, estConnecte, rang, pathname, router]);
 
   if (estEnChargement) {
     return <div className="min-h-screen flex items-center justify-center text-[var(--texte-muted)]">Chargement…</div>;
