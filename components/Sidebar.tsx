@@ -30,11 +30,6 @@ export default function Sidebar() {
         { href: "/dashboard", label: "Dashboard", icon: Home },
         { href: "/personnel", label: "Personnel", icon: Users },
         { href: "/entrainement", label: "Entraînement", icon: Calendar },
-      ]
-    },
-    {
-      title: "Opérations",
-      items: [
         ...(showForm ? [{ href: "/formateurs", label: "Formateurs", icon: GraduationCap }] : []),
         { href: "/rapports", label: "Rapports", icon: FileText },
         ...(rang >= 5 ? [{ href: "/badges", label: "Badges", icon: Award }] : []),
