@@ -16,7 +16,7 @@ export default function LoginPage() {
         />
         <h1 className="text-3xl font-bold tracking-[0.1em] text-[var(--or)] mb-1">U.S. MARSHAL</h1>
         <p className="text-sm text-[var(--texte-muted)] mb-8">
-          Bureau du Comté de Blaine — Portail Interne
+          Portail U.S Marshal - BCSO RévoRP
         </p>
         <button
           onClick={() => signIn("discord", { callbackUrl: "/dashboard" })}
