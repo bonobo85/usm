@@ -16,25 +16,48 @@ export function Modal({
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    if (open) document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    if (open) {
+      document.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
   }, [open, onClose]);
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
       <div
-        className={`relative w-full ${SIZES[size]} carte max-h-[90vh] overflow-auto`}
+        className={`relative w-full ${SIZES[size]} max-h-[85vh] overflow-y-auto rounded-xl border border-[var(--bordure)] bg-[var(--fond-clair)] shadow-2xl`}
+        style={{ animation: "modalIn 0.2s ease" }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          {title && <h2 className="text-lg font-semibold">{title}</h2>}
-          <button onClick={onClose} className="ml-auto text-[var(--texte-muted)] hover:text-white">
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-[var(--bordure)] bg-[var(--fond-clair)] rounded-t-xl">
+          {title && <h2 className="text-lg font-semibold text-[var(--texte)]">{title}</h2>}
+          <button
+            onClick={onClose}
+            className="ml-auto w-8 h-8 flex items-center justify-center rounded-md text-[var(--texte-muted)] hover:text-[var(--texte)] hover:bg-[var(--fond-carte)] transition"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div>{children}</div>
-        {footer && <div className="mt-4 pt-4 border-t border-[var(--bordure)] flex justify-end gap-2">{footer}</div>}
+
+        {/* Body */}
+        <div className="px-6 py-5">{children}</div>
+
+        {/* Footer */}
+        {footer && (
+          <div className="sticky bottom-0 px-6 py-4 border-t border-[var(--bordure)] bg-[var(--fond-clair)] flex justify-end gap-2 rounded-b-xl">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

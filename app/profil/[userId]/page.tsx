@@ -1,18 +1,18 @@
 "use client";
 import LayoutApp from "@/components/LayoutApp";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
 import { Avatar } from "@/components/Avatar";
 import { RankBadge, StatusDot } from "@/components/RankBadge";
 import { BadgesRow } from "@/components/BadgeTag";
-import { getRang } from "@/lib/constants";
-import { Edit3, Save, X, Server, ShieldCheck, AlertTriangle } from "lucide-react";
+import { getRang, estColeadMin } from "@/lib/constants";
+import { Edit3, Save, X, Server, ShieldCheck, AlertTriangle, StickyNote, Trash2, Send } from "lucide-react";
 
 export default function ProfilPage() {
   const supa = useSupabase();
-  const { user: me, rang: myRang } = useUser();
+  const { user: me, rang: myRang, estConnecte, estEnChargement } = useUser();
   const params = useParams<{ userId: string }>();
   const userId = params?.userId;
   const [profile, setProfile] = useState<any>(null);
@@ -22,51 +22,70 @@ export default function ProfilPage() {
   const [form, setForm] = useState<any>({});
   const [hist, setHist] = useState<any[]>([]);
   const [bHist, setBHist] = useState<any[]>([]);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [newNote, setNewNote] = useState("");
 
   const isMe = me?.id === userId;
+  const canSeeNotes = estColeadMin(myRang);
 
-  useEffect(() => {
-    if (!userId) return;
+  const loadProfile = useCallback(async () => {
+    if (!userId || !estConnecte) return;
     setLoading(true);
     setError(null);
-    (async () => {
-      try {
-        const { data, error: err } = await supa
-          .from("users")
-          .select("*, user_badges(is_active, attribue_le, raison, badges(code, nom))")
-          .eq("id", userId)
-          .single();
+    try {
+      const { data, error: err } = await supa
+        .from("users")
+        .select("*, user_badges(is_active, attribue_le, raison, badges(code, nom))")
+        .eq("id", userId)
+        .single();
 
-        if (err || !data) {
-          setError("Profil introuvable.");
-          setLoading(false);
-          return;
-        }
+      if (err || !data) { setError("Profil introuvable."); setLoading(false); return; }
 
-        setProfile(data);
-        setForm({
-          surnom: data.surnom ?? "",
-          date_naissance: data.date_naissance ?? "",
-          lieu_naissance: data.lieu_naissance ?? "",
-          telephone: data.telephone ?? ""
-        });
+      setProfile(data);
+      setForm({
+        surnom: data.surnom ?? "",
+        date_naissance: data.date_naissance ?? "",
+        lieu_naissance: data.lieu_naissance ?? "",
+        telephone: data.telephone ?? ""
+      });
 
-        const { data: rh } = await supa
-          .from("rank_history")
-          .select("*")
-          .eq("user_id", userId)
-          .order("modifie_le", { ascending: false });
-        setHist(rh ?? []);
+      const { data: rh } = await supa.from("rank_history").select("*").eq("user_id", userId).order("modifie_le", { ascending: false });
+      setHist(rh ?? []);
+      setBHist(data.user_badges ?? []);
 
-        setBHist(data.user_badges ?? []);
-      } catch {
-        setError("Erreur de chargement du profil.");
+      // Notes
+      if (estColeadMin(myRang)) {
+        const { data: n } = await supa.from("profile_notes").select("*, auteur:auteur_id(surnom, username)").eq("user_id", userId).order("created_at", { ascending: false });
+        setNotes(n ?? []);
       }
-      setLoading(false);
-    })();
-  }, [userId, supa]);
+    } catch { setError("Erreur de chargement."); }
+    setLoading(false);
+  }, [userId, estConnecte, supa, myRang]);
 
-  if (loading) return <LayoutApp><p className="text-[var(--texte-muted)] text-center mt-12">Chargement du profil…</p></LayoutApp>;
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  const save = async () => {
+    await supa.from("users").update(form).eq("id", userId);
+    setProfile({ ...profile, ...form });
+    setEdit(false);
+  };
+
+  const addNote = async () => {
+    if (!newNote.trim() || !userId || !me?.id) return;
+    await supa.from("profile_notes").insert({ user_id: userId, auteur_id: me.id, contenu: newNote.trim() });
+    setNewNote("");
+    // Reload notes
+    const { data: n } = await supa.from("profile_notes").select("*, auteur:auteur_id(surnom, username)").eq("user_id", userId).order("created_at", { ascending: false });
+    setNotes(n ?? []);
+  };
+
+  const deleteNote = async (noteId: string) => {
+    await supa.from("profile_notes").delete().eq("id", noteId);
+    setNotes(prev => prev.filter(n => n.id !== noteId));
+  };
+
+  if (estEnChargement || loading) return <LayoutApp><p className="text-[var(--texte-muted)] text-center mt-12">Chargement du profil…</p></LayoutApp>;
+
   if (error) return (
     <LayoutApp>
       <div className="carte text-center max-w-md mx-auto mt-12">
@@ -75,31 +94,22 @@ export default function ProfilPage() {
       </div>
     </LayoutApp>
   );
-  if (!profile) return <LayoutApp><p className="text-[var(--texte-muted)]">Profil introuvable.</p></LayoutApp>;
+
+  if (!profile) return <LayoutApp><p className="text-[var(--texte-muted)] text-center mt-12">Profil introuvable.</p></LayoutApp>;
 
   const codes = (profile.user_badges ?? []).filter((b: any) => b.is_active).map((b: any) => b.badges?.code).filter(Boolean);
   const guilds = (isMe ? me?.discord_guilds : []) ?? [];
-  const rank = getRang(profile.rank_level);
-
-  const save = async () => {
-    await supa.from("users").update(form).eq("id", userId);
-    setProfile({ ...profile, ...form });
-    setEdit(false);
-  };
 
   return (
     <LayoutApp>
+      {/* Header */}
       <div className="carte mb-4 flex flex-wrap items-center gap-4">
         <div className="relative">
           <Avatar src={profile.avatar_url} name={profile.surnom ?? profile.username} size={84} />
-          <span className="absolute bottom-1 right-1">
-            <StatusDot statut={profile.statut} />
-          </span>
+          <span className="absolute bottom-1 right-1"><StatusDot statut={profile.statut} /></span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="titre-page">{profile.surnom ?? profile.username}</h1>
-          </div>
+          <h1 className="titre-page mb-1">{profile.surnom ?? profile.username}</h1>
           <div className="flex items-center gap-2 mb-2">
             <RankBadge level={profile.rank_level} size="md" />
             <span className="text-xs text-[var(--texte-muted)]">
@@ -109,13 +119,12 @@ export default function ProfilPage() {
           <BadgesRow codes={codes} size="sm" />
         </div>
         {isMe && !edit && (
-          <button onClick={() => setEdit(true)} className="bouton-gris">
-            <Edit3 className="w-4 h-4" /> Modifier
-          </button>
+          <button onClick={() => setEdit(true)} className="bouton-gris"><Edit3 className="w-4 h-4" /> Modifier</button>
         )}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
+        {/* Info */}
         <div className="carte">
           <h2 className="titre-section">Informations</h2>
           {edit ? (
@@ -142,16 +151,15 @@ export default function ProfilPage() {
           )}
         </div>
 
+        {/* Rank history */}
         <div className="carte">
           <h2 className="titre-section">Historique des rangs</h2>
-          {hist.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun changement.</p>}
+          {hist.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun changement enregistré.</p>}
           <ul className="space-y-2 text-sm">
             {hist.map(h => (
               <li key={h.id} className="border-l-2 border-[var(--bleu)] pl-3">
                 <div className="flex justify-between">
-                  <span>
-                    {h.ancien_rang != null ? getRang(h.ancien_rang).nom : "—"} → {getRang(h.nouveau_rang).nom}
-                  </span>
+                  <span>{h.ancien_rang != null ? getRang(h.ancien_rang).nom : "—"} → {getRang(h.nouveau_rang).nom}</span>
                   <span className="text-xs text-[var(--texte-muted)]">{new Date(h.modifie_le).toLocaleDateString("fr-FR")}</span>
                 </div>
                 <p className="text-xs text-[var(--texte-muted)]">{h.raison}</p>
@@ -160,9 +168,10 @@ export default function ProfilPage() {
           </ul>
         </div>
 
+        {/* Badge history */}
         <div className="carte">
-          <h2 className="titre-section">Historique des badges</h2>
-          {bHist.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun badge.</p>}
+          <h2 className="titre-section">Badges</h2>
+          {bHist.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun badge attribué.</p>}
           <ul className="space-y-2 text-sm">
             {bHist.map((b: any, i: number) => (
               <li key={i} className="flex items-center justify-between">
@@ -175,58 +184,75 @@ export default function ProfilPage() {
           </ul>
         </div>
 
-        {/* Documents section */}
+        {/* Documents */}
         <div className="carte lg:col-span-3">
           <h2 className="titre-section">Documents</h2>
           <div className="grid sm:grid-cols-3 gap-3">
-            <div className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
-              <span className="text-sm">📷 Photo de profil</span>
-              {isMe && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
-            </div>
-            <div className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
-              <span className="text-sm">🪪 Carte d&apos;identité</span>
-              {(isMe || myRang >= 7) && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
-            </div>
-            <div className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
-              <span className="text-sm">🚗 Permis</span>
-              {(isMe || myRang >= 7) && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
-            </div>
+            {["📷 Photo de profil", "🪪 Carte d'identité", "🚗 Permis"].map((doc, i) => (
+              <div key={i} className="bg-[var(--fond)] rounded-md p-3 flex items-center justify-between">
+                <span className="text-sm">{doc}</span>
+                {(isMe || myRang >= 7) && <button className="bouton-gris text-xs py-1 px-2">Upload</button>}
+              </div>
+            ))}
           </div>
         </div>
 
+        {/* Internal notes — Co-Leader+ only, NOT on own profile */}
+        {canSeeNotes && !isMe && (
+          <div className="carte lg:col-span-3">
+            <h2 className="titre-section flex items-center gap-2">
+              <StickyNote className="w-4 h-4" /> Notes internes
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--or)]/20 text-[var(--or)] font-normal normal-case tracking-normal">Co-Leader+</span>
+            </h2>
+            <p className="text-xs text-[var(--texte-muted)] mb-3">Visibles uniquement par les Co-Leaders et supérieurs.</p>
+            <div className="flex gap-2 mb-4">
+              <input className="input flex-1" value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="Ajouter une note interne…" onKeyDown={e => e.key === "Enter" && addNote()} />
+              <button onClick={addNote} disabled={!newNote.trim()} className="bouton-or py-2 px-3"><Send className="w-4 h-4" /></button>
+            </div>
+            {notes.length === 0 && <p className="text-sm text-[var(--texte-muted)] text-center py-4">Aucune note.</p>}
+            <div className="space-y-2">
+              {notes.map(n => (
+                <div key={n.id} className="bg-[var(--fond)] rounded-md p-3 group" style={{ borderLeft: "3px solid var(--or)" }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">{n.contenu}</p>
+                      <p className="text-[10px] text-[var(--texte-muted)] mt-1">
+                        {n.auteur?.surnom ?? n.auteur?.username ?? "Staff"} — {new Date(n.created_at).toLocaleString("fr-FR")}
+                      </p>
+                    </div>
+                    <button onClick={() => deleteNote(n.id)} className="opacity-0 group-hover:opacity-100 text-[var(--rouge)] hover:bg-[var(--rouge)]/10 p-1 rounded">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Discord guilds */}
         {isMe && guilds.length > 0 && (
           <div className="carte lg:col-span-3">
             <h2 className="titre-section flex items-center gap-2"><Server className="w-4 h-4" /> Mes serveurs Discord</h2>
-            <p className="text-xs text-[var(--texte-muted)] mb-3">
-              Liste des serveurs Discord auxquels tu es connecté, avec tes rôles sur chacun.
-            </p>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {guilds.map((g: any) => (
                 <div key={g.id} className="border border-[var(--bordure)] rounded-md p-3 bg-[var(--fond-clair)]">
                   <div className="flex items-center gap-2 mb-2">
-                    {g.icon ? (
-                      <img src={`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`} alt={g.name} className="w-8 h-8 rounded-full" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-[var(--bleu)] flex items-center justify-center text-xs">{g.name?.charAt(0)}</div>
-                    )}
+                    {g.icon ? <img src={`https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`} alt={g.name} className="w-8 h-8 rounded-full" /> : <div className="w-8 h-8 rounded-full bg-[var(--bleu)] flex items-center justify-center text-xs">{g.name?.charAt(0)}</div>}
                     <div className="min-w-0">
                       <p className="text-sm font-semibold truncate">{g.name}</p>
                       {g.nick && <p className="text-xs text-[var(--texte-muted)]">Pseudo : {g.nick}</p>}
                     </div>
                   </div>
-                  {g.roles && g.roles.length > 0 ? (
+                  {g.roles?.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {g.roles.slice(0, 8).map((rid: string) => (
                         <span key={rid} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--fond-carte)] border border-[var(--bordure)] flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3 text-[var(--or)]" />
-                          {rid.slice(0, 8)}…
+                          <ShieldCheck className="w-3 h-3 text-[var(--or)]" />{rid.slice(0, 8)}…
                         </span>
                       ))}
-                      {g.roles.length > 8 && <span className="text-[10px] text-[var(--texte-muted)]">+{g.roles.length - 8}</span>}
                     </div>
-                  ) : (
-                    <p className="text-xs text-[var(--texte-muted)]">Aucun rôle visible</p>
-                  )}
+                  ) : <p className="text-xs text-[var(--texte-muted)]">Aucun rôle visible</p>}
                 </div>
               ))}
             </div>
@@ -238,10 +264,5 @@ export default function ProfilPage() {
 }
 
 function Row({ k, v }: { k: string; v: any }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <dt className="text-xs uppercase tracking-wider text-[var(--texte-muted)]">{k}</dt>
-      <dd className="text-right">{v}</dd>
-    </div>
-  );
+  return (<div className="flex justify-between gap-4"><dt className="text-xs uppercase tracking-wider text-[var(--texte-muted)]">{k}</dt><dd className="text-right">{v}</dd></div>);
 }

@@ -5,15 +5,18 @@ import { signOut } from "next-auth/react";
 import { useState } from "react";
 import {
   Home, Users, Calendar, GraduationCap, Award, Siren,
-  ChevronDown, FileText, MessageSquare, Archive, Settings, Bell, LogOut, Menu, X
+  ChevronDown, FileText, MessageSquare, Archive, Settings, Bell, LogOut, Menu, X,
+  Sun, Moon
 } from "lucide-react";
 import { useUser } from "@/lib/useUser";
+import { useTheme } from "@/lib/useTheme";
 import { Avatar } from "./Avatar";
 import { RankBadge } from "./RankBadge";
 
 export default function Navbar() {
   const path = usePathname();
   const { user, surnom, rang, peutVoirCrash, peutVoirFormateurs, hasPermission } = useUser();
+  const { theme, toggle: toggleTheme, mounted } = useTheme();
   const [openMore, setOpenMore] = useState(false);
   const [openMobile, setOpenMobile] = useState(false);
   const [openProfil, setOpenProfil] = useState(false);
@@ -45,7 +48,7 @@ export default function Navbar() {
       className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm transition ${
         path?.startsWith(href)
           ? "bg-[var(--bleu)] text-white"
-          : "text-[var(--texte-muted)] hover:text-white hover:bg-[var(--fond-clair)]"
+          : "text-[var(--texte-muted)] hover:text-[var(--texte)] hover:bg-[var(--fond-clair)]"
       }`}
     >
       <Icon className="w-4 h-4" /> {label}
@@ -53,7 +56,7 @@ export default function Navbar() {
   );
 
   return (
-    <header className="sticky top-0 z-40 bg-[var(--fond-clair)] border-b border-[var(--bordure)]">
+    <header className="sticky top-0 z-40 bg-[var(--fond-clair)] border-b border-[var(--bordure)] transition-colors duration-300">
       <div className="max-w-[1600px] mx-auto px-4 h-14 flex items-center gap-3">
         <Link href="/dashboard" className="flex items-center gap-2 text-[var(--or)] font-bold">
           <img src="/usm-logo.png" alt="USM" className="w-8 h-8 rounded-full object-cover" />
@@ -66,7 +69,7 @@ export default function Navbar() {
             <div className="relative">
               <button
                 onClick={() => setOpenMore(o => !o)}
-                className="flex items-center gap-1 px-3 py-2 rounded-md text-sm text-[var(--texte-muted)] hover:text-white hover:bg-[var(--fond-clair)]"
+                className="flex items-center gap-1 px-3 py-2 rounded-md text-sm text-[var(--texte-muted)] hover:text-[var(--texte)] hover:bg-[var(--fond-clair)]"
               >
                 Plus <ChevronDown className="w-4 h-4" />
               </button>
@@ -92,7 +95,18 @@ export default function Navbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <button className="p-2 rounded-md text-[var(--texte-muted)] hover:text-white hover:bg-[var(--fond-carte)]">
+          {/* Theme toggle */}
+          {mounted && (
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-md text-[var(--texte-muted)] hover:text-[var(--texte)] hover:bg-[var(--fond-carte)] transition"
+              title={theme === "dark" ? "Mode clair" : "Mode sombre"}
+            >
+              {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          )}
+
+          <button className="p-2 rounded-md text-[var(--texte-muted)] hover:text-[var(--texte)] hover:bg-[var(--fond-carte)]">
             <Bell className="w-5 h-5" />
           </button>
 
@@ -131,7 +145,7 @@ export default function Navbar() {
           </div>
 
           <button
-            className="lg:hidden p-2 rounded-md text-[var(--texte-muted)] hover:text-white hover:bg-[var(--fond-carte)]"
+            className="lg:hidden p-2 rounded-md text-[var(--texte-muted)] hover:text-[var(--texte)] hover:bg-[var(--fond-carte)]"
             onClick={() => setOpenMobile(true)}
           >
             <Menu className="w-5 h-5" />
@@ -151,6 +165,15 @@ export default function Navbar() {
           </div>
           <div className="flex flex-col gap-1">
             {[...main, ...more].map(m => <Item key={m.href} {...m} />)}
+          </div>
+          <div className="mt-4 pt-4 border-t border-[var(--bordure)]">
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--texte-muted)]"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {theme === "dark" ? "Mode clair" : "Mode sombre"}
+            </button>
           </div>
         </div>
       )}

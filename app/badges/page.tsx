@@ -1,7 +1,7 @@
 "use client";
 import LayoutApp from "@/components/LayoutApp";
 import { PermissionGate } from "@/components/PermissionGate";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
 import { Avatar } from "@/components/Avatar";
@@ -9,23 +9,19 @@ import { RankBadge } from "@/components/RankBadge";
 import { BadgesRow } from "@/components/BadgeTag";
 import { Modal } from "@/components/Modal";
 import { ORDRE_BADGES, BADGES_META, getRang, estColeadMin } from "@/lib/constants";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 export default function BadgesPage() {
-  const { rang } = useUser();
-  // Visible from Op-Second (5), but add/remove only for co-lead+ (7)
   return (
     <PermissionGate rangMin={5}>
-      <LayoutApp>
-        <Inner />
-      </LayoutApp>
+      <LayoutApp><Inner /></LayoutApp>
     </PermissionGate>
   );
 }
 
 function Inner() {
   const supa = useSupabase();
-  const { user: me, rang } = useUser();
+  const { user: me, rang, estConnecte } = useUser();
   const [members, setMembers] = useState<any[]>([]);
   const [allBadges, setAllBadges] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -33,32 +29,44 @@ function Inner() {
   const [target, setTarget] = useState<any>(null);
   const [revoking, setRevoking] = useState<{ user: any; code: string } | null>(null);
   const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const canManage = estColeadMin(rang); // co-leader+ for add/remove
+  const canManage = estColeadMin(rang);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!estConnecte) return;
     const { data } = await supa.from("users").select("id, username, surnom, avatar_url, rank_level, user_badges(id, is_active, badges(id, code))").eq("is_active", true);
     setMembers((data as any) ?? []);
     const { data: b } = await supa.from("badges").select("*").order("ordre_affichage");
     setAllBadges(b ?? []);
-  };
-  useEffect(() => { load(); }, []);
+  }, [supa, estConnecte]);
+
+  useEffect(() => { load(); }, [load]);
 
   const grant = async (badgeId: string) => {
-    await supa.from("user_badges").insert({ user_id: target.id, badge_id: badgeId, attribue_par: me?.id });
+    if (!target?.id || !me?.id) return;
+    setSaving(true);
+    await supa.from("user_badges").insert({ user_id: target.id, badge_id: badgeId, attribue_par: me.id });
+    setSaving(false);
     setTarget(null);
-    load();
-  };
-  const revoke = async () => {
-    if (!revoking || reason.length < 3) return;
-    const ub = revoking.user.user_badges.find((b: any) => b.is_active && b.badges.code === revoking.code);
-    if (ub) {
-      await supa.from("user_badges").update({ is_active: false, raison_revocation: reason, revoque_par: me?.id, revoque_le: new Date().toISOString() }).eq("id", ub.id);
-    }
-    setRevoking(null); setReason(""); load();
+    await load();
   };
 
-  // Badge summary counts
+  const revoke = async () => {
+    if (!revoking || reason.length < 3 || !me?.id) return;
+    setSaving(true);
+    const ub = revoking.user.user_badges.find((b: any) => b.is_active && b.badges.code === revoking.code);
+    if (ub) {
+      await supa.from("user_badges").update({
+        is_active: false, raison_revocation: reason, revoque_par: me.id, revoque_le: new Date().toISOString()
+      }).eq("id", ub.id);
+    }
+    setSaving(false);
+    setRevoking(null);
+    setReason("");
+    await load();
+  };
+
   const badgeCounts = ORDRE_BADGES.map(code => ({
     code,
     meta: BADGES_META[code],
@@ -75,7 +83,7 @@ function Inner() {
         </div>
       </div>
 
-      {/* Badge list overview */}
+      {/* Badge overview grid */}
       <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-2 mb-6">
         {badgeCounts.map(({ code, meta, count }) => (
           <button
@@ -90,6 +98,7 @@ function Inner() {
         ))}
       </div>
 
+      {/* Members list */}
       <div className="space-y-2">
         {members
           .filter(m => (m.surnom ?? m.username).toLowerCase().includes(search.toLowerCase()))
@@ -119,14 +128,15 @@ function Inner() {
           })}
       </div>
 
-      <Modal open={!!target} onClose={() => setTarget(null)} title={`Attribuer un badge à ${target?.surnom ?? target?.username}`}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {/* Grant modal */}
+      <Modal open={!!target} onClose={() => setTarget(null)} title={`Attribuer un badge — ${target?.surnom ?? target?.username}`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {target?._missing?.map((c: string) => {
             const meta = BADGES_META[c];
-            const b = allBadges.find(x => x.code === c);
+            const b = allBadges.find((x: any) => x.code === c);
             if (!b) return null;
             return (
-              <button key={c} onClick={() => grant(b.id)} className="carte text-left hover:border-[var(--or)] transition">
+              <button key={c} onClick={() => grant(b.id)} disabled={saving} className="carte text-left hover:border-[var(--or)] transition">
                 <p className="font-semibold text-sm" style={{ color: meta.couleur }}>{meta.nom}</p>
                 <p className="text-xs text-[var(--texte-muted)]">{meta.description}</p>
               </button>
@@ -135,20 +145,20 @@ function Inner() {
         </div>
       </Modal>
 
-      <Modal
-        open={!!revoking}
-        onClose={() => { setRevoking(null); setReason(""); }}
-        title="Révoquer le badge"
+      {/* Revoke modal */}
+      <Modal open={!!revoking} onClose={() => { setRevoking(null); setReason(""); }} title="Révoquer le badge"
         footer={<>
-          <button onClick={() => { setRevoking(null); setReason(""); }} className="bouton-gris">Annuler</button>
-          <button onClick={revoke} disabled={reason.length < 3} className="bouton-rouge">Révoquer</button>
+          <button className="bouton-gris" onClick={() => { setRevoking(null); setReason(""); }}>Annuler</button>
+          <button className="bouton-rouge" onClick={revoke} disabled={reason.length < 3 || saving}>
+            {saving ? "Révocation..." : "Révoquer"}
+          </button>
         </>}
       >
         <p className="text-sm mb-3">
           Révoquer <strong>{revoking?.code}</strong> de <strong>{revoking?.user?.surnom ?? revoking?.user?.username}</strong> ?
         </p>
-        <label className="label">Raison (obligatoire, min 3 car.)</label>
-        <textarea className="input" rows={3} value={reason} onChange={e => setReason(e.target.value)} />
+        <label className="label">Raison (min 3 caractères)</label>
+        <textarea className="input" rows={3} value={reason} onChange={e => setReason(e.target.value)} placeholder="Motif de la révocation..." autoFocus />
       </Modal>
     </div>
   );

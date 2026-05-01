@@ -1,5 +1,6 @@
 "use client";
 import Navbar from "./Navbar";
+import { RealtimeNotifications } from "./RealtimeNotifications";
 import { useUser } from "@/lib/useUser";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -13,7 +14,7 @@ export default function LayoutApp({ children }: { children: React.ReactNode }) {
     if (!estEnChargement && !estConnecte) router.push("/login");
   }, [estConnecte, estEnChargement, router]);
 
-  // BCSO (rank 1) redirect to waiting page, except for profile, dashboard, and bcso page itself
+  // BCSO (rank 1) redirect to waiting page
   useEffect(() => {
     if (!estEnChargement && estConnecte && rang === 1) {
       const allowed = ["/dashboard", "/profil", "/bcso"];
@@ -32,6 +33,7 @@ export default function LayoutApp({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
+      <RealtimeNotifications />
       <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 sm:p-6">{children}</main>
     </div>
   );

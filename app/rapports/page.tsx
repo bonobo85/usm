@@ -1,7 +1,7 @@
 "use client";
 import LayoutApp from "@/components/LayoutApp";
 import { Tabs } from "@/components/Tabs";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
 import Link from "next/link";
@@ -14,25 +14,31 @@ export default function Page() {
 
 function Inner() {
   const supa = useSupabase();
-  const { user: me, rang } = useUser();
+  const { user: me, rang, estConnecte } = useUser();
   const [reports, setReports] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [openNew, setOpenNew] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!estConnecte) return;
     const { data } = await supa.from("reports").select("*").order("created_at", { ascending: false });
     setReports(data ?? []);
     const { data: t } = await supa.from("report_templates").select("*").eq("is_active", true);
     setTemplates(t ?? []);
-  };
-  useEffect(() => { load(); }, []);
+  }, [supa, estConnecte]);
+
+  useEffect(() => { load(); }, [load]);
 
   const create = async (template_code: string) => {
+    if (!me?.id) return;
     const { data } = await supa.from("reports").insert({
-      titre: "Nouveau rapport", template_code, type: template_code, auteur_id: me?.id, statut: "draft", contenu: {}, sections: []
+      titre: "Nouveau rapport", template_code, type: template_code, auteur_id: me.id, statut: "draft", contenu: {}, sections: []
     }).select().single();
     setOpenNew(false);
-    if (data) location.href = `/rapports/${data.id}`;
+    if (data) {
+      await load();
+      location.href = `/rapports/${data.id}`;
+    }
   };
 
   const Card = (r: any) => (
@@ -42,7 +48,7 @@ function Inner() {
         <p className="font-semibold text-sm truncate">{r.titre}</p>
         <p className="text-xs text-[var(--texte-muted)]">{r.template_code}</p>
       </div>
-      <span className="text-xs px-2 py-0.5 rounded bg-[var(--bleu)]">{r.statut}</span>
+      <span className="text-xs px-2 py-0.5 rounded bg-[var(--bleu)] text-white">{r.statut}</span>
     </Link>
   );
 
@@ -56,21 +62,20 @@ function Inner() {
         <h1 className="titre-page">Rapports</h1>
         <button className="bouton-or" onClick={() => setOpenNew(true)}><Plus className="w-4 h-4" /> Nouveau rapport</button>
       </div>
-
       <Tabs tabs={[
-        { label: "Mes rapports", content: <div className="grid sm:grid-cols-2 gap-3">{mine.map(Card)}{mine.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun rapport.</p>}</div> },
-        ...(rang >= 5 ? [{ label: "À publier", content: <div className="grid sm:grid-cols-2 gap-3">{toPub.map(Card)}</div> }] : []),
-        { label: "Publiés", content: <div className="grid sm:grid-cols-2 gap-3">{pub.map(Card)}</div> }
+        { label: `Mes rapports (${mine.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{mine.map(Card)}{mine.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun rapport.</p>}</div> },
+        ...(rang >= 5 ? [{ label: `À publier (${toPub.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{toPub.map(Card)}{toPub.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun.</p>}</div> }] : []),
+        { label: `Publiés (${pub.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{pub.map(Card)}{pub.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun.</p>}</div> }
       ]} />
-
       <Modal open={openNew} onClose={() => setOpenNew(false)} title="Choisir un modèle">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           {templates.map(t => (
-            <button key={t.code} onClick={() => create(t.code)} className="carte text-left hover:border-[var(--or)]">
+            <button key={t.code} onClick={() => create(t.code)} className="carte text-left hover:border-[var(--or)] transition">
               <p className="font-semibold text-sm">{t.nom}</p>
               <p className="text-xs text-[var(--texte-muted)]">{t.description}</p>
             </button>
           ))}
+          {templates.length === 0 && <p className="text-sm text-[var(--texte-muted)] col-span-2">Aucun template disponible.</p>}
         </div>
       </Modal>
     </div>
