@@ -1,50 +1,79 @@
 "use client";
 import LayoutApp from "@/components/LayoutApp";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
-import { Save, Send, BadgeCheck } from "lucide-react";
+import { api } from "@/lib/api";
+import { Save, Send, BadgeCheck, Loader2, Plus, Trash2 } from "lucide-react";
 
 export default function Page() {
   const supa = useSupabase();
-  const { user: me, rang } = useUser();
+  const { user: me, rang, estConnecte } = useUser();
   const { rapportId } = useParams<{ rapportId: string }>();
   const [r, setR] = useState<any>(null);
   const [tpl, setTpl] = useState<any>(null);
   const [titre, setTitre] = useState("");
   const [contenu, setContenu] = useState<any>({});
   const [sections, setSections] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supa.from("reports").select("*").eq("id", rapportId).single();
-      setR(data);
-      setTitre(data?.titre ?? "");
-      setContenu(data?.contenu ?? {});
-      setSections(data?.sections ?? []);
-      if (data?.template_code) {
-        const { data: t } = await supa.from("report_templates").select("*").eq("code", data.template_code).single();
-        setTpl(t);
-      }
-    })();
-  }, [rapportId]);
+  const load = useCallback(async () => {
+    if (!estConnecte || !rapportId) return;
+    setLoading(true);
+    const { data } = await supa.from("reports").select("*").eq("id", rapportId).single();
+    if (!data) { setLoading(false); return; }
+    setR(data);
+    setTitre(data.titre ?? "");
+    setContenu(data.contenu ?? {});
+    setSections(data.sections ?? []);
+    if (data.template_code) {
+      const { data: t } = await supa.from("report_templates").select("*").eq("code", data.template_code).single();
+      setTpl(t);
+    }
+    setLoading(false);
+  }, [supa, estConnecte, rapportId]);
 
-  if (!r) return <LayoutApp><p className="text-[var(--texte-muted)]">Chargement…</p></LayoutApp>;
+  useEffect(() => { load(); }, [load]);
 
   const save = async (statut?: string) => {
-    const upd: any = { titre, contenu, sections, updated_at: new Date().toISOString() };
-    if (statut) upd.statut = statut;
-    await supa.from("reports").update(upd).eq("id", r.id);
-    setR({ ...r, ...upd });
+    setSaving(true); setErrMsg(null); setSavedMsg(null);
+    const fields: any = { titre, contenu, sections };
+    if (statut) fields.statut = statut;
+    const result = await api("report:update_self", { id: r.id, fields });
+    setSaving(false);
+    if (!result.ok) { setErrMsg(result.error || "Erreur"); return; }
+    setSavedMsg(statut === "submitted" ? "Soumis !" : "Enregistré");
+    setTimeout(() => setSavedMsg(null), 2000);
+    await load();
   };
+
   const publish = async () => {
-    await supa.from("reports").update({ publie: true, publie_par: me?.id, publie_le: new Date().toISOString(), statut: "validated" }).eq("id", r.id);
-    location.reload();
+    setSaving(true); setErrMsg(null);
+    const result = await api("report:publish", { id: r.id });
+    setSaving(false);
+    if (!result.ok) { setErrMsg(result.error || "Erreur"); return; }
+    await load();
   };
+
+  if (loading) return <LayoutApp><div className="flex items-center gap-2 text-[var(--texte-muted)] mt-12 justify-center"><Loader2 className="w-5 h-5 animate-spin" /> Chargement…</div></LayoutApp>;
+  if (!r) return <LayoutApp><p className="text-[var(--texte-muted)] text-center mt-12">Rapport introuvable.</p></LayoutApp>;
 
   const isCustom = r.template_code === "custom";
   const isAuthor = r.auteur_id === me?.id;
+  const canEdit = (isAuthor && !r.publie) || rang >= 5;
+  const canPublish = rang >= 5 && !r.publie;
+
+  const addCustomSection = () => setSections([...sections, { titre: "Nouvelle section", contenu: "" }]);
+  const updateSection = (i: number, key: string, val: string) => {
+    const next = [...sections];
+    next[i] = { ...next[i], [key]: val };
+    setSections(next);
+  };
+  const removeSection = (i: number) => setSections(sections.filter((_, idx) => idx !== i));
 
   return (
     <LayoutApp>
@@ -54,52 +83,59 @@ export default function Page() {
             <BadgeCheck className="w-4 h-4 text-[var(--or)]" /> Publié le {new Date(r.publie_le).toLocaleString("fr-FR")}
           </div>
         )}
-        <input className="input text-lg font-semibold" value={titre} onChange={e => setTitre(e.target.value)} disabled={!isAuthor || r.publie} />
+        {errMsg && <div className="mb-3 p-2 bg-[var(--rouge)]/10 border border-[var(--rouge)]/30 rounded text-sm text-[var(--rouge)]">{errMsg}</div>}
+        {savedMsg && <div className="mb-3 p-2 bg-[#2D8B4E]/10 border border-[#2D8B4E]/30 rounded text-sm text-[#2D8B4E]">{savedMsg}</div>}
+
+        <input className="input text-lg font-semibold" value={titre} onChange={e => setTitre(e.target.value)} disabled={!canEdit} />
         <p className="text-xs text-[var(--texte-muted)] mt-1">Type : {r.template_code} • Statut : {r.statut}</p>
 
-        {tpl && !isCustom && (
-          <div className="mt-4 space-y-4">
-            {(tpl.sections as any[]).map((sec, i) => (
-              <div key={i} className="border border-[var(--bordure)] rounded p-3">
-                <h3 className="titre-section">{sec.titre}</h3>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {sec.champs.map((c: any) => (
-                    <div key={c.nom} className={c.type === "textarea" ? "sm:col-span-2" : ""}>
-                      <label className="label">{c.label}{c.required && " *"}</label>
-                      {c.type === "textarea" ? (
-                        <textarea className="input" rows={3} value={contenu[c.nom] ?? ""} onChange={e => setContenu({...contenu, [c.nom]: e.target.value})} disabled={!isAuthor || r.publie} />
-                      ) : (
-                        <input type={c.type === "number" ? "number" : c.type === "date" ? "date" : c.type === "datetime" ? "datetime-local" : "text"}
-                          className="input" value={contenu[c.nom] ?? ""} onChange={e => setContenu({...contenu, [c.nom]: e.target.value})} disabled={!isAuthor || r.publie} />
-                      )}
-                    </div>
-                  ))}
+        {tpl && !isCustom && tpl.sections?.map((sec: any, si: number) => (
+          <div key={si} className="mt-4">
+            <h3 className="text-sm font-semibold text-[var(--or)] uppercase tracking-wider mb-2">{sec.titre}</h3>
+            <div className="space-y-3">
+              {sec.champs?.map((champ: any, ci: number) => (
+                <div key={ci}>
+                  <label className="label">{champ.label}{champ.required && " *"}</label>
+                  {champ.type === "textarea" ? (
+                    <textarea className="input" rows={3}
+                      value={contenu[champ.nom] ?? ""}
+                      onChange={e => setContenu({...contenu, [champ.nom]: e.target.value})}
+                      disabled={!canEdit}
+                    />
+                  ) : (
+                    <input className="input" type={champ.type === "datetime" ? "datetime-local" : champ.type}
+                      value={contenu[champ.nom] ?? ""}
+                      onChange={e => setContenu({...contenu, [champ.nom]: e.target.value})}
+                      disabled={!canEdit}
+                    />
+                  )}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        )}
+        ))}
 
         {isCustom && (
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-4">
             {sections.map((s, i) => (
               <div key={i} className="border border-[var(--bordure)] rounded p-3">
-                <input className="input mb-2" value={s.titre} onChange={e => { const c = [...sections]; c[i].titre = e.target.value; setSections(c); }} />
-                <textarea className="input" rows={4} value={s.texte} onChange={e => { const c = [...sections]; c[i].texte = e.target.value; setSections(c); }} />
+                <div className="flex justify-between mb-2">
+                  <input className="input text-sm font-semibold flex-1 mr-2" value={s.titre} onChange={e => updateSection(i, "titre", e.target.value)} disabled={!canEdit} />
+                  {canEdit && <button onClick={() => removeSection(i)} className="text-[var(--rouge)] p-1 hover:bg-[var(--rouge)]/10 rounded"><Trash2 className="w-4 h-4" /></button>}
+                </div>
+                <textarea className="input" rows={4} value={s.contenu} onChange={e => updateSection(i, "contenu", e.target.value)} disabled={!canEdit} />
               </div>
             ))}
-            <button onClick={() => setSections([...sections, { titre: "", texte: "" }])} className="bouton-gris text-xs">+ Ajouter une section</button>
+            {canEdit && <button onClick={addCustomSection} className="bouton-gris text-xs"><Plus className="w-3 h-3" /> Ajouter une section</button>}
           </div>
         )}
 
-        {isAuthor && !r.publie && (
-          <div className="mt-4 flex gap-2">
-            <button onClick={() => save("draft")} className="bouton-gris"><Save className="w-4 h-4" /> Brouillon</button>
-            <button onClick={() => save("submitted")} className="bouton-bleu"><Send className="w-4 h-4" /> Soumettre</button>
+        {canEdit && (
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => save()} disabled={saving} className="bouton-gris"><Save className="w-4 h-4" /> {saving ? "..." : "Enregistrer brouillon"}</button>
+            {!r.publie && <button onClick={() => save("submitted")} disabled={saving} className="bouton-bleu"><Send className="w-4 h-4" /> Soumettre</button>}
+            {canPublish && r.statut === "submitted" && <button onClick={publish} disabled={saving} className="bouton-or"><BadgeCheck className="w-4 h-4" /> Publier</button>}
           </div>
-        )}
-        {rang >= 5 && !r.publie && (
-          <button onClick={publish} className="mt-4 bouton-or"><BadgeCheck className="w-4 h-4" /> Publier</button>
         )}
       </div>
     </LayoutApp>

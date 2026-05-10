@@ -4,6 +4,7 @@ import { Tabs } from "@/components/Tabs";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
+import { api } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import Link from "next/link";
 import { Plus, Calendar, MapPin, Users as UsersIcon, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
@@ -35,6 +36,7 @@ function Inner() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
   const [form, setForm] = useState({ titre: "", description: "", plan: "", date_session: "", lieu: "", rank_min: 1, capacite_max: 10, badge_cible_code: "" });
   const [calDate, setCalDate] = useState(new Date());
 
@@ -57,14 +59,11 @@ function Inner() {
   const sessionsForDay = (date: Date) => allSessions.filter(s => sameDay(new Date(s.date_session), date));
 
   const create = async () => {
-    if (!form.titre || !form.date_session || !me?.id) return;
-    setSaving(true);
-    await supa.from("training_sessions").insert({
-      titre: form.titre, description: form.description || null, plan: form.plan || null,
-      date_session: form.date_session, lieu: form.lieu || null, rank_min: form.rank_min,
-      capacite_max: form.capacite_max, createur_id: me.id, statut: "planifie"
-    });
+    if (!form.titre || !form.date_session) return;
+    setSaving(true); setErrMsg(null);
+    const r = await api("session:create", form);
     setSaving(false);
+    if (!r.ok) { setErrMsg(r.error || "Erreur"); return; }
     setOpen(false); setStep(1);
     setForm({ titre: "", description: "", plan: "", date_session: "", lieu: "", rank_min: 1, capacite_max: 10, badge_cible_code: "" });
     await load();
@@ -72,9 +71,10 @@ function Inner() {
 
   const toggle = async (s: any) => {
     if (!me?.id) return;
-    const mine = s.training_registrations?.find((r: any) => r.user_id === me.id && !r.annule);
-    if (mine) await supa.from("training_registrations").update({ annule: true }).eq("id", mine.id);
-    else await supa.from("training_registrations").insert({ session_id: s.id, user_id: me.id });
+    const activeReg = s.training_registrations?.find((r: any) => r.user_id === me.id && !r.annule);
+    const action = activeReg ? "session:unregister" : "session:register";
+    const r = await api(action, { session_id: s.id });
+    if (!r.ok) { setErrMsg(r.error || "Erreur"); return; }
     await load();
   };
 
@@ -97,8 +97,7 @@ function Inner() {
           <div className="h-full bg-[var(--or)] rounded" style={{ width: `${Math.min(100, (inscrits / (s.capacite_max ?? 10)) * 100)}%` }} />
         </div>
         {s.statut === "planifie" && (
-          <button onClick={() => toggle(s)} disabled={!mine && complet}
-            className={`mt-3 w-full text-sm rounded-md py-1.5 ${mine ? "bouton-rouge" : complet ? "bouton-gris" : "bouton-bleu"} justify-center`}>
+          <button onClick={() => toggle(s)} disabled={!mine && complet} className={`mt-3 w-full text-sm rounded-md py-1.5 ${mine ? "bouton-rouge" : complet ? "bouton-gris" : "bouton-bleu"} justify-center`}>
             {mine ? "Se désinscrire" : complet ? "Complet" : "S'inscrire"}
           </button>
         )}
@@ -113,8 +112,14 @@ function Inner() {
         {rang >= 4 && <button className="bouton-or" onClick={() => setOpen(true)}><Plus className="w-4 h-4" /> Nouvelle session</button>}
       </div>
 
+      {errMsg && (
+        <div className="mb-4 p-3 rounded-lg bg-[var(--rouge)]/10 border border-[var(--rouge)]/30 text-sm text-[var(--rouge)]">
+          {errMsg} <button className="ml-2 underline" onClick={() => setErrMsg(null)}>×</button>
+        </div>
+      )}
+
       <Tabs tabs={[
-        { label: `Planning (${planning.length})`, icon: <Calendar className="w-4 h-4" />, content: <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{planning.map(SessionCard)}{planning.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucune session à venir.</p>}</div> },
+        { label: `Planning (${planning.length})`, icon: <Calendar className="w-4 h-4" />, content: <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{planning.map(SessionCard)}{planning.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucune session.</p>}</div> },
         { label: "Calendrier", icon: <CalendarDays className="w-4 h-4" />, content: (
           <div>
             <div className="flex items-center justify-between mb-4">
@@ -148,8 +153,8 @@ function Inner() {
         { label: "Passées", content: <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{past.map(SessionCard)}{past.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucune.</p>}</div> }
       ]} />
 
-      {/* 3-step creation modal */}
-      <Modal open={open} onClose={() => { setOpen(false); setStep(1); }} title={`Nouvelle session — Étape ${step}/3`} size="lg">
+      <Modal open={open} onClose={() => { setOpen(false); setStep(1); setErrMsg(null); }} title={`Nouvelle session — Étape ${step}/3`} size="lg">
+        {errMsg && <div className="mb-3 p-2 rounded bg-[var(--rouge)]/10 text-sm text-[var(--rouge)]">{errMsg}</div>}
         {step === 1 && (
           <div className="space-y-4">
             <p className="text-xs text-[var(--texte-muted)]">Informations générales</p>
@@ -163,7 +168,7 @@ function Inner() {
             <p className="text-xs text-[var(--texte-muted)]">Planification</p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div><label className="label">Date et heure *</label><input type="datetime-local" className="input" value={form.date_session} onChange={e => setForm({...form, date_session: e.target.value})} /></div>
-              <div><label className="label">Lieu</label><input className="input" value={form.lieu} onChange={e => setForm({...form, lieu: e.target.value})} placeholder="Stand de tir LS" /></div>
+              <div><label className="label">Lieu</label><input className="input" value={form.lieu} onChange={e => setForm({...form, lieu: e.target.value})} placeholder="Stand de tir" /></div>
             </div>
             <div className="grid sm:grid-cols-3 gap-3">
               <div><label className="label">Rang min</label><select className="input" value={form.rank_min} onChange={e => setForm({...form, rank_min: parseInt(e.target.value) || 1})}>{RANGS.map(r => <option key={r.level} value={r.level}>{r.nom}</option>)}</select></div>
@@ -190,7 +195,7 @@ function Inner() {
               <button className="bouton-gris" onClick={() => setStep(2)}>← Retour</button>
               <div className="flex gap-2">
                 <button className="bouton-gris" onClick={() => { setOpen(false); setStep(1); }}>Annuler</button>
-                <button className="bouton-or" onClick={create} disabled={saving}>{saving ? "Création..." : "Créer"}</button>
+                <button className="bouton-or" onClick={create} disabled={saving}>{saving ? "..." : "Créer"}</button>
               </div>
             </div>
           </div>

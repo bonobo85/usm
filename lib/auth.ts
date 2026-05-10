@@ -3,43 +3,30 @@ import DiscordProvider from "next-auth/providers/discord";
 import jwt from "jsonwebtoken";
 import { supabaseAdmin } from "./supabase";
 
-/**
- * Scopes Discord :
- *  - identify : profil de base
- *  - guilds   : liste des serveurs où le user est présent
- *  - guilds.members.read : récupère les rôles du user dans CHAQUE serveur (via /users/@me/guilds/{id}/member)
- */
 const DISCORD_SCOPES = "identify guilds guilds.members.read";
 
 async function fetchDiscordGuilds(accessToken: string) {
-  const r = await fetch("https://discord.com/api/users/@me/guilds", {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  if (!r.ok) return [];
-  return (await r.json()) as Array<{ id: string; name: string; icon: string | null; permissions: string }>;
+  try {
+    const r = await fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!r.ok) return [];
+    return (await r.json()) as Array<{ id: string; name: string; icon: string | null }>;
+  } catch { return []; }
 }
 
 async function fetchGuildMember(accessToken: string, guildId: string) {
-  const r = await fetch(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  if (!r.ok) return null;
-  return (await r.json()) as { roles: string[]; nick: string | null };
+  try {
+    const r = await fetch(`https://discord.com/api/users/@me/guilds/${guildId}/member`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!r.ok) return null;
+    return (await r.json()) as { roles: string[]; nick: string | null };
+  } catch { return null; }
 }
 
 async function buildDiscordPayload(accessToken: string) {
   const guilds = await fetchDiscordGuilds(accessToken);
-  // Pour chaque serveur on essaie d'aller chercher les rôles (badges)
   const enriched = await Promise.all(
     guilds.slice(0, 50).map(async g => {
       const member = await fetchGuildMember(accessToken, g.id);
-      return {
-        id: g.id,
-        name: g.name,
-        icon: g.icon,
-        roles: member?.roles ?? [],
-        nick: member?.nick ?? null
-      };
+      return { id: g.id, name: g.name, icon: g.icon, roles: member?.roles ?? [], nick: member?.nick ?? null };
     })
   );
   return enriched;
@@ -60,67 +47,41 @@ export const authOptions: NextAuthOptions = {
       if (!account || account.provider !== "discord") return false;
       const supa = supabaseAdmin();
 
-      const discordGuilds = account.access_token
-        ? await buildDiscordPayload(account.access_token)
-        : [];
+      const discordGuilds = account.access_token ? await buildDiscordPayload(account.access_token) : [];
 
       const { data: existing } = await supa
-        .from("users")
-        .select("id, is_active")
-        .eq("discord_id", account.providerAccountId)
-        .maybeSingle();
+        .from("users").select("id, is_active").eq("discord_id", account.providerAccountId).maybeSingle();
 
       if (existing) {
         if (!existing.is_active) return false;
-        await supa
-          .from("users")
-          .update({
-            username: user.name ?? "Inconnu",
-            avatar_url: user.image,
-            derniere_connexion: new Date().toISOString(),
-            statut: "disponible",
-            discord_guilds: discordGuilds
-          })
-          .eq("id", existing.id);
+        await supa.from("users").update({
+          username: user.name ?? "Inconnu",
+          avatar_url: user.image,
+          derniere_connexion: new Date().toISOString(),
+          statut: "disponible",
+          discord_guilds: discordGuilds
+        }).eq("id", existing.id);
       } else {
-        const { data: created } = await supa
-          .from("users")
-          .insert({
-            discord_id: account.providerAccountId,
-            username: user.name ?? "Inconnu",
-            avatar_url: user.image,
-            rank_level: 1,
-            statut: "disponible",
-            is_active: true,
-            discord_guilds: discordGuilds
-          })
-          .select("id")
-          .single();
+        const { data: created } = await supa.from("users").insert({
+          discord_id: account.providerAccountId,
+          username: user.name ?? "Inconnu",
+          avatar_url: user.image,
+          rank_level: 1,
+          statut: "disponible",
+          is_active: true,
+          discord_guilds: discordGuilds
+        }).select("id").single();
 
-        // audit
         if (created) {
           await supa.from("rank_history").insert({
-            user_id: created.id,
-            ancien_rang: null,
-            nouveau_rang: 1,
-            raison: "inscription"
+            user_id: created.id, ancien_rang: null, nouveau_rang: 1, raison: "inscription"
           });
-        }
-
-        // webhook éventuel
-        if (process.env.DISCORD_WEBHOOK_NEW_MEMBER) {
-          fetch(process.env.DISCORD_WEBHOOK_NEW_MEMBER, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content: `Nouveau membre : **${user.name}**` })
-          }).catch(() => {});
         }
       }
       return true;
     },
 
     async jwt({ token, account }) {
-      // 1ère connexion : on hydrate
       if (account?.provider === "discord") {
         token.discord_id = account.providerAccountId;
       }
@@ -142,38 +103,26 @@ export const authOptions: NextAuthOptions = {
           token.is_active = u.is_active;
           token.discord_guilds = u.discord_guilds ?? [];
 
-          const { data: rang } = await supa
-            .from("ranks")
-            .select("nom")
-            .eq("level", u.rank_level)
-            .single();
+          const { data: rang } = await supa.from("ranks").select("nom").eq("level", u.rank_level).single();
           token.rank_nom = rang?.nom;
 
-          const { data: perms } = await supa
-            .from("user_permissions")
-            .select("permission")
-            .eq("user_id", u.id);
+          const { data: perms } = await supa.from("user_permissions").select("permission").eq("user_id", u.id);
           token.permissions = (perms ?? []).map(p => p.permission);
 
           const { data: badges } = await supa
-            .from("user_badges")
-            .select("badge_id, is_active, badges(code)")
-            .eq("user_id", u.id)
-            .eq("is_active", true);
-          token.badges = (badges ?? [])
-            .map((b: any) => b.badges?.code)
-            .filter(Boolean);
+            .from("user_badges").select("badge_id, is_active, badges(code)")
+            .eq("user_id", u.id).eq("is_active", true);
+          token.badges = (badges ?? []).map((b: any) => b.badges?.code).filter(Boolean);
 
-          // heartbeat
-          await supa
-            .from("users")
-            .update({ derniere_connexion: new Date().toISOString() })
-            .eq("id", u.id);
+          await supa.from("users").update({ derniere_connexion: new Date().toISOString() }).eq("id", u.id);
         }
       }
 
-      // JWT custom signé pour Supabase RLS
+      // Sign Supabase JWT with Supabase JWT secret (or fallback to NEXTAUTH_SECRET if not configured)
+      // CRITICAL: Set SUPABASE_JWT_SECRET in env vars to the value from Supabase Settings → API → JWT Settings
+      // Otherwise RLS policies that use auth.jwt() won't work!
       if (token.user_id) {
+        const supabaseSecret = process.env.SUPABASE_JWT_SECRET || process.env.NEXTAUTH_SECRET!;
         token.supabase_token = jwt.sign(
           {
             sub: token.user_id,
@@ -183,7 +132,7 @@ export const authOptions: NextAuthOptions = {
             role: "authenticated",
             exp: Math.floor(Date.now() / 1000) + 60 * 60 * 2
           },
-          process.env.NEXTAUTH_SECRET!
+          supabaseSecret
         );
       }
 
@@ -192,7 +141,7 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
       if (!token.is_active) {
-        session.user = null;
+        session.user = null as any;
         return session;
       }
       session.user = {
@@ -209,7 +158,7 @@ export const authOptions: NextAuthOptions = {
         is_active: token.is_active as boolean,
         discord_guilds: (token.discord_guilds as any[]) ?? []
       } as any;
-      session.supabase_token = token.supabase_token;
+      (session as any).supabase_token = token.supabase_token;
       return session;
     }
   },

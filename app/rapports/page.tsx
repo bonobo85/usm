@@ -4,13 +4,12 @@ import { Tabs } from "@/components/Tabs";
 import { useEffect, useState, useCallback } from "react";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
+import { api } from "@/lib/api";
 import Link from "next/link";
 import { Modal } from "@/components/Modal";
 import { Plus, FileText } from "lucide-react";
 
-export default function Page() {
-  return <LayoutApp><Inner /></LayoutApp>;
-}
+export default function Page() { return <LayoutApp><Inner /></LayoutApp>; }
 
 function Inner() {
   const supa = useSupabase();
@@ -18,6 +17,7 @@ function Inner() {
   const [reports, setReports] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [openNew, setOpenNew] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!estConnecte) return;
@@ -30,15 +30,11 @@ function Inner() {
   useEffect(() => { load(); }, [load]);
 
   const create = async (template_code: string) => {
-    if (!me?.id) return;
-    const { data } = await supa.from("reports").insert({
-      titre: "Nouveau rapport", template_code, type: template_code, auteur_id: me.id, statut: "draft", contenu: {}, sections: []
-    }).select().single();
+    setErrMsg(null);
+    const r = await api<{ id: string }>("report:create", { template_code, titre: "Nouveau rapport" });
+    if (!r.ok) { setErrMsg(r.error || "Erreur"); return; }
     setOpenNew(false);
-    if (data) {
-      await load();
-      location.href = `/rapports/${data.id}`;
-    }
+    if (r.data?.id) location.href = `/rapports/${r.data.id}`;
   };
 
   const Card = (r: any) => (
@@ -62,8 +58,9 @@ function Inner() {
         <h1 className="titre-page">Rapports</h1>
         <button className="bouton-or" onClick={() => setOpenNew(true)}><Plus className="w-4 h-4" /> Nouveau rapport</button>
       </div>
+      {errMsg && <div className="mb-4 p-3 rounded-lg bg-[var(--rouge)]/10 border border-[var(--rouge)]/30 text-sm text-[var(--rouge)]">{errMsg} <button className="ml-2 underline" onClick={() => setErrMsg(null)}>×</button></div>}
       <Tabs tabs={[
-        { label: `Mes rapports (${mine.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{mine.map(Card)}{mine.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun rapport.</p>}</div> },
+        { label: `Mes rapports (${mine.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{mine.map(Card)}{mine.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun.</p>}</div> },
         ...(rang >= 5 ? [{ label: `À publier (${toPub.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{toPub.map(Card)}{toPub.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun.</p>}</div> }] : []),
         { label: `Publiés (${pub.length})`, content: <div className="grid sm:grid-cols-2 gap-3">{pub.map(Card)}{pub.length === 0 && <p className="text-sm text-[var(--texte-muted)]">Aucun.</p>}</div> }
       ]} />
@@ -75,7 +72,7 @@ function Inner() {
               <p className="text-xs text-[var(--texte-muted)]">{t.description}</p>
             </button>
           ))}
-          {templates.length === 0 && <p className="text-sm text-[var(--texte-muted)] col-span-2">Aucun template disponible.</p>}
+          {templates.length === 0 && <p className="text-sm text-[var(--texte-muted)] col-span-2">Aucun template.</p>}
         </div>
       </Modal>
     </div>

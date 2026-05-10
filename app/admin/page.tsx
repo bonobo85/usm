@@ -5,6 +5,7 @@ import { PermissionGate } from "@/components/PermissionGate";
 import { useEffect, useState } from "react";
 import { useSupabase } from "@/lib/useSupabase";
 import { useUser } from "@/lib/useUser";
+import { api } from "@/lib/api";
 import { Avatar } from "@/components/Avatar";
 import { RankBadge } from "@/components/RankBadge";
 import { Modal } from "@/components/Modal";
@@ -19,11 +20,12 @@ export default function Page() {
 
 function Inner() {
   const supa = useSupabase();
-  const { user: me, rang } = useUser();
+  const { rang } = useUser();
   const [members, setMembers] = useState<any[]>([]);
   const [target, setTarget] = useState<any>(null);
   const [newRank, setNewRank] = useState<number>(1);
   const [reason, setReason] = useState("");
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const load = async () => {
     const { data } = await supa.from("users").select("*").eq("is_active", true).order("rank_level", { ascending: false });
@@ -33,13 +35,10 @@ function Inner() {
 
   const apply = async () => {
     if (!target || reason.length < 3) return;
-    const r = await fetch("/api/rang", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: target.id, nouveau_rang: newRank, raison: reason })
-    });
-    if (r.ok) { setTarget(null); setReason(""); load(); }
-    else alert("Erreur");
+    setErrMsg(null);
+    const r = await api("user:rank_change", { user_id: target.id, nouveau_rang: newRank, raison: reason });
+    if (!r.ok) { setErrMsg(r.error || "Erreur"); return; }
+    setTarget(null); setReason(""); load();
   };
 
   const now = Date.now();
@@ -53,6 +52,7 @@ function Inner() {
   return (
     <div>
       <h1 className="titre-page mb-4">Admin</h1>
+      {errMsg && <div className="mb-4 p-3 rounded-lg bg-[var(--rouge)]/10 border border-[var(--rouge)]/30 text-sm text-[var(--rouge)]">{errMsg} <button className="ml-2 underline" onClick={() => setErrMsg(null)}>×</button></div>}
       <Tabs tabs={[
         {
           label: "Rangs",
