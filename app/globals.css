@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --usm-gold: #d4a13a;
+    --usm-gold-light: #f0c14b;
+    --usm-gold-dark: #9c7621;
+    --usm-blue: #2c5fb8;
+    --usm-red: #b8252b;
+    --sem-red: #b8252b;
+    --sem-red-deep: #2e0608;
+    --sem-blue: #2c5fb8;
+    --sem-blue-deep: #0a1530;
+    --sem-green: #1e7a4e;
+    --sem-green-deep: #051a10;
+    --sem-purple: #5e3b9c;
+    --sem-purple-deep: #14082e;
+    --sem-amber: #b8851e;
+    --sem-amber-deep: #2b1c04;
+  }
+
+  body {
+    background: #0a0a12;
+    color: #e8ecf5;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.5;
+    background-image:
+      radial-gradient(ellipse 1200px 600px at 80% -10%, rgba(94, 59, 156, 0.05), transparent 60%),
+      radial-gradient(ellipse 800px 400px at 0% 100%, rgba(44, 95, 184, 0.04), transparent 60%);
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1f1f33; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2a2a4a; }
+}
+
+@layer components {
+  .btn-gold {
+    @apply bg-gradient-to-br from-usm-gold to-usm-gold-dark text-[#0a0a12] font-bold px-4 py-2 rounded-lg text-xs uppercase tracking-wider transition-all hover:shadow-lg hover:-translate-y-0.5;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-text-dim border border-border font-semibold px-4 py-2 rounded-lg text-xs uppercase tracking-wider transition-all hover:text-text hover:border-usm-gold-dark;
+  }
+
+  .btn-danger {
+    @apply bg-gradient-to-br from-usm-red-bright to-[#6b1418] text-white font-bold px-4 py-2 rounded-lg text-xs uppercase tracking-wider transition-all hover:shadow-lg;
+  }
+
+  .btn-success {
+    @apply bg-gradient-to-br from-[#2eb872] to-[#1a5a3a] text-white font-bold px-4 py-2 rounded-lg text-xs uppercase tracking-wider transition-all hover:shadow-lg;
+  }
+
+  .input {
+    @apply bg-bg-2 border border-border text-text px-3 py-2 rounded-lg text-sm font-sans focus:outline-none focus:border-usm-gold transition-colors;
+  }
+
+  .card {
+    @apply bg-panel border border-border rounded-xl overflow-hidden;
+  }
+
+  .stat-card-red {
+    background: linear-gradient(135deg, var(--sem-red) 0%, var(--sem-red-deep) 100%);
+    border-color: rgba(184, 37, 43, 0.5);
+    box-shadow: 0 4px 24px rgba(184, 37, 43, 0.12);
+  }
+
+  .stat-card-blue {
+    background: linear-gradient(135deg, var(--sem-blue) 0%, var(--sem-blue-deep) 100%);
+    border-color: rgba(44, 95, 184, 0.5);
+    box-shadow: 0 4px 24px rgba(44, 95, 184, 0.12);
+  }
+
+  .stat-card-green {
+    background: linear-gradient(135deg, var(--sem-green) 0%, var(--sem-green-deep) 100%);
+    border-color: rgba(30, 122, 78, 0.5);
+    box-shadow: 0 4px 24px rgba(30, 122, 78, 0.12);
+  }
+
+  .stat-card-purple {
+    background: linear-gradient(135deg, var(--sem-purple) 0%, var(--sem-purple-deep) 100%);
+    border-color: rgba(94, 59, 156, 0.5);
+    box-shadow: 0 4px 24px rgba(94, 59, 156, 0.12);
+  }
+
+  .stat-card-gold {
+    background: linear-gradient(135deg, var(--sem-amber) 0%, var(--sem-amber-deep) 100%);
+    border-color: rgba(184, 133, 30, 0.5);
+    box-shadow: 0 4px 24px rgba(184, 133, 30, 0.12);
+  }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease both;
+}
